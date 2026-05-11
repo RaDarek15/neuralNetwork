@@ -3,3 +3,10 @@ model.json
 *.exe
 # Ignore a folder
 .vscode/
+# Delete the .git folder and reinitialize
+rm -rf .git
+git init
+git add .
+git commit -m "initial commit"
+git remote add origin https://github.com/RaDarek15/neuralNetwork
+git push --force
