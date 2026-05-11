@@ -1,5 +1,4 @@
-# Ignore a specific file
 model.json
 *.exe
-# Ignore a folder
+
 .vscode/
