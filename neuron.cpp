@@ -1,0 +1,170 @@
+#include <cmath>
+#include <iostream>
+#include <vector>
+#include <fstream>
+
+double sigmoid(double z)
+{
+    return 1.0 / (1.0 + exp(-z));
+}
+
+double strata(double wynikSieci, double oczekiwany) { return pow((oczekiwany - wynikSieci), 2); };
+
+std::vector<double> warstwa(
+    std::vector<double> inputy,
+    std::vector<std::vector<double>> wagi,
+    std::vector<double> biasy)
+{
+    std::vector<double> wyniki;
+
+    for (int i = 0; i < wagi.size(); i++)
+    {
+        double wynik = 0;
+
+        for (int j = 0; j < inputy.size(); j++)
+        {
+            wynik += inputy[j] * wagi[i][j];
+        }
+
+        wynik += biasy[i];
+
+        wyniki.push_back(sigmoid(wynik));
+    }
+
+    return wyniki;
+}
+
+std::vector<double> XOR(
+    std::vector<double> inputy,
+    std::vector<std::vector<std::vector<double>>> wagi,
+    std::vector<std::vector<double>> biasy)
+{
+    return warstwa(
+        warstwa(
+            warstwa(inputy, wagi[0], biasy[0]),
+            wagi[1],
+            biasy[1]),
+        wagi[2],
+        biasy[2]);
+}
+double srStrata(std::vector<std::vector<std::vector<double>>> wagi, std::vector<std::vector<double>> biasy)
+{
+    return (strata(XOR({0.0, 0.0}, wagi, biasy)[0], 0) + strata(XOR({1.0, 0.0}, wagi, biasy)[0], 1) + strata(XOR({0.0, 1.0}, wagi, biasy)[0], 1) + strata(XOR({1.0, 1.0}, wagi, biasy)[0], 0)) / 4;
+}
+std::vector<std::vector<std::vector<double>>> WeigtNumGrad(std::vector<std::vector<std::vector<double>>> wagi, std::vector<std::vector<double>> biasy, double increment)
+{
+    double ogStrata = srStrata(wagi, biasy);
+    std::vector<std::vector<std::vector<double>>> changes = wagi;
+    std::vector<std::vector<std::vector<double>>> tempWagi = wagi;
+    for (int i = 0; i < wagi.size(); i++)
+    {
+        for (int j = 0; j < wagi[i].size(); j++)
+        {
+            for (int k = 0; k < wagi[i][j].size(); k++)
+            {
+                tempWagi[i][j][k] += increment;
+                changes[i][j][k] = (srStrata(tempWagi, biasy) - ogStrata) / increment;
+                tempWagi = wagi;
+            }
+        }
+    }
+    return changes;
+}
+std::vector<std::vector<double>> biasNumGrad(std::vector<std::vector<std::vector<double>>> wagi, std::vector<std::vector<double>> biasy, double increment){
+    double ogStrata = srStrata(wagi, biasy);
+    std::vector<std::vector<double>> changes = biasy;
+    std::vector<std::vector<double>> tempBiasy = biasy;
+    for (int i = 0; i < wagi.size(); i++)
+    {
+        for (int j = 0; j < wagi[i].size(); j++)
+        {
+            tempBiasy[i][j] += increment;
+            changes[i][j] = (srStrata(wagi, tempBiasy) - ogStrata) / increment;
+            tempBiasy = biasy;
+        }
+    }
+    return changes;
+}
+
+void weightUpdate(std::vector<std::vector<std::vector<double>>> weightNumGrad,std::vector<std::vector<double>> biasNumGrad, std::vector<std::vector<std::vector<double>>> &wagi, std::vector<std::vector<double>> &biasy, double learningRate)
+{
+    for (int i = 0; i < wagi.size(); i++)
+    {
+        for (int j = 0; j < wagi[i].size(); j++)
+        {
+            for (int k = 0; k < wagi[i][j].size(); k++)
+            {
+                wagi[i][j][k] = wagi[i][j][k] - learningRate * weightNumGrad[i][j][k];
+            }
+        }
+    }
+    for (int i = 0; i < biasy.size(); i++)
+        {
+            for (int j = 0; j < biasy[i].size(); j++)
+            {
+                biasy[i][j] = biasy[i][j] - learningRate * biasNumGrad[i][j];
+            }
+        }
+}
+void saveModel(const std::vector<std::vector<std::vector<double>>> &wagi, const std::vector<std::vector<double>> &biasy, std::string fileName)
+{
+    std::ofstream file(fileName);
+    file << srStrata(wagi,biasy)<< std::endl;
+    file<< "Weights: \n";
+    for (int i = 0; i < wagi.size(); i++)
+    {
+        for (int j = 0; j < wagi[i].size(); j++)
+        {
+            for (int k = 0; k < wagi[i][j].size(); k++)
+            {
+                file<<wagi[i][j][k];
+                file<< std::endl;
+            }
+            file<< std::endl;
+        }
+        file<< std::endl;
+    }
+    file<< "Biases: \n";
+    for (int i = 0; i < biasy.size(); i++)
+        {
+            for (int j = 0; j < biasy[i].size(); j++)
+            {
+                file<<biasy[i][j];
+                file<< std::endl;
+            }
+            file<< std::endl;
+        }
+        file<< std::endl;
+    file.close();
+}
+int main()
+{
+    std::vector<std::vector<std::vector<double>>> wagi =
+        {
+            {{-0.5984, 0.9076},
+             {-0.2183, -0.8423}},
+
+            {{0.9145, 0.6585},
+             {-0.7523, -0.0304}},
+
+            {{-0.0834, 0.5}}};
+
+    std::vector<std::vector<double>> biasy =
+        {
+            {0.3926, -0.8681},
+            {0.8218, 0.2938},
+            {0.1}};
+
+    std::vector<double> inputy = {1.0, 0.0};
+
+    std::vector<double> wyniki = XOR(inputy, wagi, biasy);
+    for (int i = 0; i < 100000; i++)
+    {
+        weightUpdate(WeigtNumGrad(wagi, biasy, 0.0001),biasNumGrad(wagi,biasy,0.0001), wagi,biasy , 1);
+        if (i % 1000 == 0)
+        {
+            std::cout<< srStrata(wagi,biasy) << std::endl;
+            saveModel(wagi,biasy,"Model.txt");
+        }
+    }
+}
