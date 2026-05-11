@@ -2,6 +2,9 @@
 #include <iostream>
 #include <vector>
 #include <fstream>
+#include "json.hpp"
+
+using json = nlohmann::json;
 
 double sigmoid(double z)
 {
@@ -108,33 +111,13 @@ void weightUpdate(std::vector<std::vector<std::vector<double>>> weightNumGrad,st
 }
 void saveModel(const std::vector<std::vector<std::vector<double>>> &wagi, const std::vector<std::vector<double>> &biasy, std::string fileName)
 {
+    json j;
+    j["srStrata"] =  srStrata(wagi,biasy);
+    
+    j["weights"] = wagi;
+    j["biases"] = biasy;
     std::ofstream file(fileName);
-    file << srStrata(wagi,biasy)<< std::endl;
-    file<< "Weights: \n";
-    for (int i = 0; i < wagi.size(); i++)
-    {
-        for (int j = 0; j < wagi[i].size(); j++)
-        {
-            for (int k = 0; k < wagi[i][j].size(); k++)
-            {
-                file<<wagi[i][j][k];
-                file<< std::endl;
-            }
-            file<< std::endl;
-        }
-        file<< std::endl;
-    }
-    file<< "Biases: \n";
-    for (int i = 0; i < biasy.size(); i++)
-        {
-            for (int j = 0; j < biasy[i].size(); j++)
-            {
-                file<<biasy[i][j];
-                file<< std::endl;
-            }
-            file<< std::endl;
-        }
-        file<< std::endl;
+    file << j.dump(4);
     file.close();
 }
 int main()
@@ -164,7 +147,7 @@ int main()
         if (i % 1000 == 0)
         {
             std::cout<< srStrata(wagi,biasy) << std::endl;
-            saveModel(wagi,biasy,"Model.txt");
+            saveModel(wagi,biasy,"model.json");
         }
     }
 }
