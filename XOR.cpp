@@ -120,6 +120,9 @@ void saveModel(const std::vector<std::vector<std::vector<double>>> &wagi, const 
     file << j.dump(4);
     file.close();
 }
+void loadModel(const std::vector<std::vector<std::vector<double>>> &wagi, const std::vector<std::vector<double>> &biasy, std::string fileName){
+    
+}
 int main()
 {
     std::vector<std::vector<std::vector<double>>> wagi =
