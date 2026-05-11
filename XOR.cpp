@@ -73,7 +73,8 @@ std::vector<std::vector<std::vector<double>>> WeigtNumGrad(std::vector<std::vect
     }
     return changes;
 }
-std::vector<std::vector<double>> biasNumGrad(std::vector<std::vector<std::vector<double>>> wagi, std::vector<std::vector<double>> biasy, double increment){
+std::vector<std::vector<double>> biasNumGrad(std::vector<std::vector<std::vector<double>>> wagi, std::vector<std::vector<double>> biasy, double increment)
+{
     double ogStrata = srStrata(wagi, biasy);
     std::vector<std::vector<double>> changes = biasy;
     std::vector<std::vector<double>> tempBiasy = biasy;
@@ -89,7 +90,7 @@ std::vector<std::vector<double>> biasNumGrad(std::vector<std::vector<std::vector
     return changes;
 }
 
-void weightUpdate(std::vector<std::vector<std::vector<double>>> weightNumGrad,std::vector<std::vector<double>> biasNumGrad, std::vector<std::vector<std::vector<double>>> &wagi, std::vector<std::vector<double>> &biasy, double learningRate)
+void weightUpdate(std::vector<std::vector<std::vector<double>>> weightNumGrad, std::vector<std::vector<double>> biasNumGrad, std::vector<std::vector<std::vector<double>>> &wagi, std::vector<std::vector<double>> &biasy, double learningRate)
 {
     for (int i = 0; i < wagi.size(); i++)
     {
@@ -102,26 +103,31 @@ void weightUpdate(std::vector<std::vector<std::vector<double>>> weightNumGrad,st
         }
     }
     for (int i = 0; i < biasy.size(); i++)
+    {
+        for (int j = 0; j < biasy[i].size(); j++)
         {
-            for (int j = 0; j < biasy[i].size(); j++)
-            {
-                biasy[i][j] = biasy[i][j] - learningRate * biasNumGrad[i][j];
-            }
+            biasy[i][j] = biasy[i][j] - learningRate * biasNumGrad[i][j];
         }
+    }
 }
 void saveModel(const std::vector<std::vector<std::vector<double>>> &wagi, const std::vector<std::vector<double>> &biasy, std::string fileName)
 {
     json j;
-    j["srStrata"] =  srStrata(wagi,biasy);
-    
+    j["srStrata"] = srStrata(wagi, biasy);
+
     j["weights"] = wagi;
     j["biases"] = biasy;
     std::ofstream file(fileName);
     file << j.dump(4);
     file.close();
 }
-void loadModel(const std::vector<std::vector<std::vector<double>>> &wagi, const std::vector<std::vector<double>> &biasy, std::string fileName){
-    
+void loadModel(std::vector<std::vector<std::vector<double>>> &wagi,std::vector<std::vector<double>> &biasy, std::string fileName)
+{
+    std::ifstream file("model.json");
+    json j;
+    file >> j;
+    wagi = j["weights"].get<std::vector<std::vector<std::vector<double>>>>();
+    biasy = j["biases"].get<std::vector<std::vector<double>>>();
 }
 int main()
 {
@@ -143,14 +149,15 @@ int main()
 
     std::vector<double> inputy = {1.0, 0.0};
 
+    loadModel(wagi,biasy,"model.json");
     std::vector<double> wyniki = XOR(inputy, wagi, biasy);
     for (int i = 0; i < 100000; i++)
     {
-        weightUpdate(WeigtNumGrad(wagi, biasy, 0.0001),biasNumGrad(wagi,biasy,0.0001), wagi,biasy , 1);
+        weightUpdate(WeigtNumGrad(wagi, biasy, 0.0001), biasNumGrad(wagi, biasy, 0.0001), wagi, biasy, 1);
         if (i % 1000 == 0)
         {
-            std::cout<< srStrata(wagi,biasy) << std::endl;
-            saveModel(wagi,biasy,"model.json");
+            std::cout << srStrata(wagi, biasy) << std::endl;
+            saveModel(wagi, biasy, "model.json");
         }
     }
 }
