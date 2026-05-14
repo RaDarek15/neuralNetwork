@@ -1,4 +1,4 @@
 model.json
 *.exe
-
+*.json
 .vscode/
