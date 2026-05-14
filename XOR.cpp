@@ -49,7 +49,7 @@ Warstwa::Warstwa(int neuronCount, int inputCount)
 {
     weights.resize(neuronCount);
     for (auto &i : weights)
-        weights.resize(inputCount);
+        i.resize(inputCount);
     biases.resize(neuronCount);
     std::mt19937 mt(time(nullptr));
     std::uniform_int_distribution<std::mt19937::result_type> dist6(-1, 1);
@@ -57,12 +57,12 @@ Warstwa::Warstwa(int neuronCount, int inputCount)
     {
         for (int j = 0; j < inputCount; j++)
         {
-            weights[i][j] = mt();
+            weights[i][j] = dist6(mt);
         }
     }
     for (int i = 0; i < neuronCount; i++)
     {
-        biases[i] = mt();
+        biases[i] = dist6(mt);
     }
 }
 Warstwa::Warstwa(std::vector<std::vector<double>> weights, std::vector<double> biases) : biases(biases), weights(weights) {};
@@ -88,12 +88,38 @@ public:
         }
         return layerOutput;
     }
-    double strata(double wynikSieci, double oczekiwany) { return pow((oczekiwany - wynikSieci), 2); };
-    double srStrata(std::vector<std::vector<std::vector<double>>> wagi, std::vector<std::vector<double>> biasy)
+    double srStrata(std::vector<double> wynikSieci, std::vector<double> oczekiwany)
     {
-        
-        //return (strata(XOR({0.0, 0.0}, wagi, biasy)[0], 0) + strata(XOR({1.0, 0.0}, wagi, biasy)[0], 1) + strata(XOR({0.0, 1.0}, wagi, biasy)[0], 1) + strata(XOR({1.0, 1.0}, wagi, biasy)[0], 0)) / 4;
+        double srStrata;
+        int i = 0;
+        for (; i < oczekiwany.size(); i++)
+        {
+            srStrata += pow((oczekiwany[i] - wynikSieci[i]), 2);
+        }
+        return srStrata / oczekiwany.size();
     }
+
+    // std::vector<double> biasNumGrad(double increment,std::vector<double> inputs, std::vector<double> oczekiwany)
+    // {
+    //     double ogStrata = srStrata(forwardPass(inputs),oczekiwany);
+        
+        
+    //     std::vector<std::vector<double>> gradient;
+    //     for (int i = 0; i < layers.size(); i++)
+    //     {
+    //         const std::vector<double> constBiases = layers[i].biases;
+    //         std::vector<double> tempBiases = layers[i].biases;
+    //         for (int j = 0; j < layers[i].biases.size(); j++)
+    //         {
+    //             layers[i].biases[j] += increment;
+    //             gradient.push_back((srStrata(forwardPass(inputs),oczekiwany) - ogStrata) / increment)  ;
+    //             layers[i].biases = constBiases;
+    //         }
+
+    //         tempBiasy = biasy;
+    //     }
+    //     return changes;
+    // }
     siec(std::vector<Warstwa> layers);
     siec();
 };
