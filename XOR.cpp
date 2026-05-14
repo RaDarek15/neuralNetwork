@@ -2,6 +2,7 @@
 #include <iostream>
 #include <vector>
 #include <fstream>
+#include <random>
 #include "json.hpp"
 
 using json = nlohmann::json;
@@ -10,6 +11,98 @@ double sigmoid(double z)
 {
     return 1.0 / (1.0 + exp(-z));
 }
+
+//-------------------CLASSES-------------------
+
+class Warstwa
+{
+private:
+public:
+    std::vector<std::vector<double>> weights;
+    std::vector<double> biases;
+    std::vector<double> forwardPass(
+        std::vector<double> inputy)
+    {
+        std::vector<double> wyniki;
+
+        for (int i = 0; i < weights.size(); i++)
+        {
+            double wynik = 0;
+
+            for (int j = 0; j < inputy.size(); j++)
+            {
+                wynik += inputy[j] * weights[i][j];
+            }
+
+            wynik += biases[i];
+
+            wyniki.push_back(sigmoid(wynik));
+        }
+
+        return wyniki;
+    }
+    Warstwa(int neuronCount, int inputCount);
+    Warstwa(std::vector<std::vector<double>> weights, std::vector<double> biases);
+    ~Warstwa();
+};
+Warstwa::Warstwa(int neuronCount, int inputCount)
+{
+    weights.resize(neuronCount);
+    for (auto &i : weights)
+        weights.resize(inputCount);
+    biases.resize(neuronCount);
+    std::mt19937 mt(time(nullptr));
+    std::uniform_int_distribution<std::mt19937::result_type> dist6(-1, 1);
+    for (int i = 0; i < neuronCount; i++)
+    {
+        for (int j = 0; j < inputCount; j++)
+        {
+            weights[i][j] = mt();
+        }
+    }
+    for (int i = 0; i < neuronCount; i++)
+    {
+        biases[i] = mt();
+    }
+}
+Warstwa::Warstwa(std::vector<std::vector<double>> weights, std::vector<double> biases) : biases(biases), weights(weights) {};
+
+Warstwa::~Warstwa()
+{
+}
+
+//-------------------DIVIDER-------------------
+
+class siec
+{
+private:
+public:
+    std::vector<Warstwa> layers;
+
+    std::vector<double> forwardPass(std::vector<double> inputs)
+    {
+        std::vector<double> layerOutput = inputs;
+        for (int i = 0; i < layers.size(); i++)
+        {
+            layers[i].forwardPass(layerOutput);
+        }
+        return layerOutput;
+    }
+    double strata(double wynikSieci, double oczekiwany) { return pow((oczekiwany - wynikSieci), 2); };
+    double srStrata(std::vector<std::vector<std::vector<double>>> wagi, std::vector<std::vector<double>> biasy)
+    {
+        
+        //return (strata(XOR({0.0, 0.0}, wagi, biasy)[0], 0) + strata(XOR({1.0, 0.0}, wagi, biasy)[0], 1) + strata(XOR({0.0, 1.0}, wagi, biasy)[0], 1) + strata(XOR({1.0, 1.0}, wagi, biasy)[0], 0)) / 4;
+    }
+    siec(std::vector<Warstwa> layers);
+    siec();
+};
+siec::siec(std::vector<Warstwa> layers) : layers(layers) {}
+siec::~siec()
+{
+}
+
+//-------------------GLOBAL FUNCTIONS-------------------
 
 double strata(double wynikSieci, double oczekiwany) { return pow((oczekiwany - wynikSieci), 2); };
 
@@ -121,7 +214,7 @@ void saveModel(const std::vector<std::vector<std::vector<double>>> &wagi, const 
     file << j.dump(4);
     file.close();
 }
-void loadModel(std::vector<std::vector<std::vector<double>>> &wagi,std::vector<std::vector<double>> &biasy, std::string fileName)
+void loadModel(std::vector<std::vector<std::vector<double>>> &wagi, std::vector<std::vector<double>> &biasy, std::string fileName)
 {
     std::ifstream file("model.json");
     json j;
@@ -149,7 +242,7 @@ int main()
 
     std::vector<double> inputy = {1.0, 0.0};
 
-    loadModel(wagi,biasy,"model.json");
+    loadModel(wagi, biasy, "model.json");
     std::vector<double> wyniki = XOR(inputy, wagi, biasy);
     for (int i = 0; i < 100000; i++)
     {
