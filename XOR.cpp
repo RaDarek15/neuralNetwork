@@ -7,22 +7,30 @@
 
 using json = nlohmann::json;
 
-//-------------------CLASSES-------------------
+double sigmoid(double z)
+{
+    return 1.0 / (1.0 + exp(-z));
+}
+double deriSigmoid(double z)
+{
+    return sigmoid(z) * (1 - sigmoid(z));
+}
 
+struct layerCache
+{
+    std::vector<double> preActivation;
+    std::vector<double> postActivation;
+};
 class Warstwa
 {
 private:
 public:
     std::vector<std::vector<double>> weights;
     std::vector<double> biases;
-    double static sigmoid(double z)
-    {
-        return 1.0 / (1.0 + exp(-z));
-    }
-    std::vector<double> forwardPass(
+    layerCache forwardPass(
         std::vector<double> inputy)
     {
-        std::vector<double> wyniki;
+        layerCache cache;
 
         for (int i = 0; i < weights.size(); i++)
         {
@@ -34,12 +42,13 @@ public:
             }
 
             wynik += biases[i];
-
-            wyniki.push_back(sigmoid(wynik));
+            cache.preActivation.push_back(wynik);
+            cache.postActivation.push_back(sigmoid(wynik));
         }
 
-        return wyniki;
+        return cache;
     }
+
     Warstwa(int neuronCount, int inputCount);
     Warstwa(std::vector<std::vector<double>> weights, std::vector<double> biases);
 };
@@ -64,27 +73,51 @@ Warstwa::Warstwa(int neuronCount, int inputCount)
     }
 }
 Warstwa::Warstwa(std::vector<std::vector<double>> weights, std::vector<double> biases) : biases(biases), weights(weights) {};
+std::vector<double> error(std::vector<double> preActivation, std::vector<double> outputs, std::vector<double> expectedValues)
+{
+    std::vector<double> error;
+    for (int i = 0; i < preActivation.size(); i++)
+    {
+        error.push_back(2 * (outputs[i] - expectedValues[i]) * deriSigmoid(preActivation[i]));
+    }
+    return error;
+}
+std::vector<double> propagateError(std::vector<double> error, Warstwa &layer, std::vector<double> preActivation)
+{
+    std::vector<double> out(layer.weights[0].size());
 
-//-------------------DIVIDER-------------------
-
+    for (int k = 0; k < layer.weights[0].size(); k++)
+    {
+        for (int j = 0; j < layer.weights.size(); j++)
+        {
+            out[k] += error[j] * layer.weights[j][k];
+        }
+        out[k] *= deriSigmoid(preActivation[k]);
+    }
+    return out;
+}
 class siec
 {
 private:
 public:
     std::vector<Warstwa> layers;
 
-    std::vector<double> forwardPass(std::vector<double> inputs)
+    std::vector<layerCache> forwardPass(std::vector<double> inputs)
     {
-        std::vector<double> layerOutput = inputs;
+        std::vector<layerCache> caches;
+        std::vector<double> current = inputs;
+
         for (int i = 0; i < layers.size(); i++)
         {
-            layerOutput = layers[i].forwardPass(layerOutput);
+            layerCache cache = layers[i].forwardPass(current);
+            caches.push_back(cache);
+            current = cache.postActivation;
         }
-        return layerOutput;
+        return caches;
     }
     double srStrata(std::vector<std::vector<double>> wynikSieci, std::vector<std::vector<double>> expectedValues)
     {
-        double srStrata;
+        double srStrata = 0.0;
         int i = 0;
         for (; i < expectedValues.size(); i++)
         {
@@ -96,78 +129,60 @@ public:
         return srStrata / expectedValues.size();
     }
 
-    std::vector<std::vector<double>> biasNumGrad(double increment, std::vector<std::vector<double>> inputs, std::vector<std::vector<double>> expectedValues)
+    std::vector<std::vector<std::vector<double>>> weightBackprop(std::vector<double> error, std::vector<layerCache> cache, std::vector<double> inputs)
     {
-        std::vector<std::vector<double>> wynikiSieci;
-        for (int i = 0; i < inputs.size(); i++)
-        {
-            wynikiSieci.push_back(forwardPass(inputs[i]));
-        }
-
-        double ogStrata = srStrata(wynikiSieci, expectedValues);
-        wynikiSieci.clear();
-        std::vector<double> layerGradient;
-        std::vector<std::vector<double>> gradient;
-
+        std::vector<std::vector<std::vector<double>>> output(layers.size());
         for (int i = 0; i < layers.size(); i++)
         {
-            const std::vector<double> constBiases = layers[i].biases;
-            std::vector<double> tempBiases = layers[i].biases;
-            for (int j = 0; j < layers[i].biases.size(); j++)
+            output[i].resize(layers[i].weights.size());
+            for (int j = 0; j < layers[i].weights.size(); j++)
             {
-
-                layers[i].biases[j] += increment;
-                for (int k = 0; k < inputs.size(); k++)
-                {
-                    wynikiSieci.push_back(forwardPass(inputs[k]));
-                }
-                layerGradient.push_back((srStrata(wynikiSieci, expectedValues) - ogStrata) / increment);
-                layers[i].biases = constBiases;
-                wynikiSieci.clear();
+                output[i][j].resize(layers[i].weights[j].size());
             }
-            gradient.push_back(layerGradient);
-            layerGradient.clear();
         }
-        return gradient;
-    }
-    std::vector<std::vector<std::vector<double>>> weightNumGrad(double increment, std::vector<std::vector<double>> inputs, std::vector<std::vector<double>> expectedValues)
-    {
-        std::vector<std::vector<double>> wynikiSieci;
-        for (int i = 0; i < inputs.size(); i++)
+        for (int i = layers.size() - 1; i >= 0; i--)
         {
-            wynikiSieci.push_back(forwardPass(inputs[i]));
-        }
-        double ogStrata = srStrata(wynikiSieci, expectedValues);
-        wynikiSieci.clear();
-        std::vector<std::vector<double>> layerGradient;
-        std::vector<double> neuronGradient;
-        std::vector<std::vector<std::vector<double>>> gradient;
-
-        for (int i = 0; i < layers.size(); i++)
-        {
-            const std::vector<std::vector<double>> constWeights = layers[i].weights;
-            std::vector<std::vector<double>> tempWeights = layers[i].weights;
             for (int j = 0; j < layers[i].weights.size(); j++)
             {
                 for (int k = 0; k < layers[i].weights[j].size(); k++)
                 {
-                    layers[i].weights[j][k] += increment;
-                    for (int l = 0; l < inputs.size(); l++)
+                    if (i > 0)
                     {
-                        wynikiSieci.push_back(forwardPass(inputs[l]));
+                        output[i][j][k] = error[j] * cache[i - 1].postActivation[k];
                     }
-                    neuronGradient.push_back((srStrata(wynikiSieci, expectedValues) - ogStrata) / increment);
-                    layers[i].weights[j][k] = constWeights[j][k];
-                    wynikiSieci.clear();
-                }
 
-                layerGradient.push_back(neuronGradient);
-                neuronGradient.clear();
+                    else
+                    {
+                        output[i][j][k] = error[j] * inputs[k];
+                    }
+                }
             }
-            gradient.push_back(layerGradient);
-            layerGradient.clear();
+            if (i > 0)
+            {
+                error = propagateError(error, layers[i], cache[i - 1].preActivation);
+            }
         }
-        return gradient;
+        return output;
+    }
+    std::vector<std::vector<double>> biasBackprop(std::vector<double> error, std::vector<layerCache> cache, std::vector<double> inputs)
+    {
+        std::vector<std::vector<double>> output(layers.size());
+        for (int i = 0; i < layers.size(); i++)
+        {
+            output[i].resize(layers[i].biases.size());
+        }
+        for (int i = layers.size() - 1; i >= 0; i--)
+        {
+            for (int j = 0; j < layers[i].weights.size(); j++)
+            {
+                output[i][j] = error[j];
+            }
+            if (i > 0)
+            {
+                error = propagateError(error, layers[i], cache[i - 1].preActivation);
+            }
+        }
+        return output;
     }
     void update(std::vector<std::vector<std::vector<double>>> weightNumGrad, std::vector<std::vector<double>> biasNumGrad, double learningRate)
     {
@@ -179,33 +194,41 @@ public:
                 {
                     layers[i].weights[j][k] = layers[i].weights[j][k] - learningRate * weightNumGrad[i][j][k];
                 }
-            }
-        }
-        for (int i = 0; i < layers.size(); i++)
-        {
-            for (int j = 0; j < layers[i].biases.size(); j++)
-            {
                 layers[i].biases[j] = layers[i].biases[j] - learningRate * biasNumGrad[i][j];
             }
         }
     }
-    void train(std::vector<std::vector<double>> trainingData, std::vector<std::vector<double>> expectedValues, double increment, double learningRate, int iterations)
+    void train(std::vector<std::vector<double>> trainingData, std::vector<std::vector<double>> expectedValues, double learningRate, int iterations)
     {
+        std::vector<layerCache> cache;
         for (int i = 0; i < iterations; i++)
         {
-            update(weightNumGrad(increment, trainingData, expectedValues), biasNumGrad(increment, trainingData, expectedValues), learningRate);
+
+            for (int j = 0; j < trainingData.size(); j++)
+            {
+                cache = forwardPass(trainingData[j]);
+                std::vector<double> err = error(cache.back().preActivation, cache.back().postActivation, expectedValues[j]);
+                update(weightBackprop(err, cache, trainingData[j]), biasBackprop(err, cache, trainingData[j]), learningRate);
+            }
             if (i % 1000 == 0)
             {
+                std::vector<std::vector<double>> allOutputs;
+                for (int j = 0; j < trainingData.size(); j++)
+                    allOutputs.push_back(forwardPass(trainingData[j]).back().postActivation);
+
+
+                std::cout << "iteration: " << i << " loss: " << srStrata(allOutputs, expectedValues) << "\n";
                 save("model.json", trainingData, expectedValues);
             }
         }
     }
+
     void save(std::string fileName, std::vector<std::vector<double>> inputs, std::vector<std::vector<double>> expectedValues)
     {
         std::vector<std::vector<double>> wynikiSieci;
         for (int i = 0; i < inputs.size(); i++)
         {
-            wynikiSieci.push_back(forwardPass(inputs[i]));
+            wynikiSieci.push_back(forwardPass(inputs[i]).back().postActivation);
         }
 
         double ogStrata = srStrata(wynikiSieci, expectedValues);
@@ -228,11 +251,12 @@ public:
         for (int i = 0; i < layers.size(); i++)
         {
             layers[i].weights = j["layers"][i]["weights"].get<std::vector<std::vector<double>>>();
-            layers[i].biases = j["layers"][i]["biases"].get<std::vector<double>>(); 
+            layers[i].biases = j["layers"][i]["biases"].get<std::vector<double>>();
         }
 
         file.close();
     }
+
     siec(std::vector<Warstwa> layers);
 };
 siec::siec(std::vector<Warstwa> layers) : layers(layers) {}
@@ -241,5 +265,5 @@ int main()
 {
     std::vector<std::vector<double>> trainingData = {{1, 1}, {0, 0}, {1, 0}, {0, 1}}, expectedValues = {{0}, {0}, {1}, {1}};
     siec XOR({Warstwa(2, 2), Warstwa(2, 2), Warstwa(1, 2)});
-    XOR.train(trainingData, expectedValues, 0.0001, 1, 100000);
+    XOR.train(trainingData, expectedValues, 1, 100000);
 }
