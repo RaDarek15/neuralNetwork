@@ -212,19 +212,15 @@ public:
                 std::vector<double> err = error(cache.back().preActivation, cache.back().postActivation, expectedValues[j]);
                 update(weightBackprop(err, cache, trainingData[j]), biasBackprop(err, cache, trainingData[j]), learningRate);
             }
-            std::vector<std::vector<double>> allOutputs;
-            for (int j = 0; j < trainingData.size(); j++)
-                allOutputs.push_back(forwardPass(trainingData[j]).back().postActivation);
-            std::cout << "iteration: " << i << " loss: " << srStrata(allOutputs, expectedValues) << "\n";
-            save("model.json", expectedValues, allOutputs);
+            
+            save("model.json", expectedValues);
         }
     }
 
-    void save(const std::string& fileName, const std::vector<std::vector<double>>& expectedValues, const std::vector<std::vector<double>>& alloutputs)
+    void save(const std::string& fileName, const std::vector<std::vector<double>>& expectedValues)
     {
-        double ogStrata = srStrata(alloutputs, expectedValues);
+
         json j;
-        j["loss"] = ogStrata;
         j["layers"] = json::array();
         for (auto &layer : layers)
         {
