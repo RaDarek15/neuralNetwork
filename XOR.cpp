@@ -1,9 +1,10 @@
-#include <cmath>
 #include <iostream>
+#include <cmath>
 #include <vector>
 #include <fstream>
 #include <random>
 #include "json.hpp"
+#include "mnist.hpp"
 
 using json = nlohmann::json;
 
@@ -210,27 +211,17 @@ public:
                 std::vector<double> err = error(cache.back().preActivation, cache.back().postActivation, expectedValues[j]);
                 update(weightBackprop(err, cache, trainingData[j]), biasBackprop(err, cache, trainingData[j]), learningRate);
             }
-            if (i % 1000 == 0)
-            {
-                std::vector<std::vector<double>> allOutputs;
-                for (int j = 0; j < trainingData.size(); j++)
-                    allOutputs.push_back(forwardPass(trainingData[j]).back().postActivation);
-
-                std::cout << "iteration: " << i << " loss: " << srStrata(allOutputs, expectedValues) << "\n";
-                save("model.json", trainingData, expectedValues);
-            }
+            std::vector<std::vector<double>> allOutputs;
+            for (int j = 0; j < trainingData.size(); j++)
+                allOutputs.push_back(forwardPass(trainingData[j]).back().postActivation);
+            std::cout << "iteration: " << i << " loss: " << srStrata(allOutputs, expectedValues) << "\n";
+            save("model.json", expectedValues, allOutputs);
         }
     }
 
-    void save(std::string fileName, std::vector<std::vector<double>> inputs, std::vector<std::vector<double>> expectedValues)
+    void save(std::string fileName, std::vector<std::vector<double>> expectedValues, std::vector<std::vector<double>> alloutputs)
     {
-        std::vector<std::vector<double>> wynikiSieci;
-        for (int i = 0; i < inputs.size(); i++)
-        {
-            wynikiSieci.push_back(forwardPass(inputs[i]).back().postActivation);
-        }
-
-        double ogStrata = srStrata(wynikiSieci, expectedValues);
+        double ogStrata = srStrata(alloutputs, expectedValues);
         json j;
         j["loss"] = ogStrata;
         j["layers"] = json::array();
@@ -262,7 +253,17 @@ siec::siec(std::vector<Warstwa> layers) : layers(layers) {}
 
 int main()
 {
-    std::vector<std::vector<double>> trainingData = {{1, 1}, {0, 0}, {1, 0}, {0, 1}}, expectedValues = {{0}, {0}, {1}, {1}};
-    siec XOR({Warstwa(2, 2), Warstwa(2, 2), Warstwa(1, 2)});
-    XOR.train(trainingData, expectedValues, 1, 100000);
+    std::ifstream f("model.json");
+    data data = readMnist("train-images.idx3-ubyte", "train-labels.idx1-ubyte");
+    std::vector<std::vector<double>> trainingData = data.images, expectedValues = data.labels;
+    siec mnist({Warstwa(128, 784), Warstwa(64, 128), Warstwa(10, 64)});
+    if (f)
+    {
+        mnist.load("model.json");
+    }
+
+    else
+    {
+        mnist.train(trainingData, expectedValues, 0.01, 3);
+    }
 }
