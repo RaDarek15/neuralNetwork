@@ -216,7 +216,6 @@ public:
                 for (int j = 0; j < trainingData.size(); j++)
                     allOutputs.push_back(forwardPass(trainingData[j]).back().postActivation);
 
-
                 std::cout << "iteration: " << i << " loss: " << srStrata(allOutputs, expectedValues) << "\n";
                 save("model.json", trainingData, expectedValues);
             }
