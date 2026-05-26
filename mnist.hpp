@@ -9,7 +9,7 @@ struct data
     std::vector<std::vector<double>> labels;
 };
 
-std::vector<int> readHeader(std::string filename)
+std::vector<int> readHeader(const std::string& filename)
 {
     std::vector<int> out(4);
     std::vector<unsigned char> current(4);
@@ -23,7 +23,7 @@ std::vector<int> readHeader(std::string filename)
 
     return out;
 }
-std::vector<std::vector<double>> images(std::string filename, std::vector<int> header)
+std::vector<std::vector<double>> images(const std::string& filename, const std::vector<int>& header)
 {
     unsigned char current;
     std::vector<std::vector<double>> output(header[1]);
@@ -40,7 +40,7 @@ std::vector<std::vector<double>> images(std::string filename, std::vector<int> h
     }
     return output;
 }
-std::vector<std::vector<double>> labels(std::string filename, std::vector<int> header)
+std::vector<std::vector<double>> labels(const std::string& filename, const std::vector<int>& header)
 {
     unsigned char current;
     std::vector<std::vector<double>> output(header[1]);
@@ -54,7 +54,7 @@ std::vector<std::vector<double>> labels(std::string filename, std::vector<int> h
     }
     return output;
 }
-data readMnist(std::string imagefileName,std::string labelfileName)
+data readMnist(const std::string& imagefileName, const std::string& labelfileName)
 {
     data output;
     std::vector<int> imageHeader = readHeader(imagefileName);
