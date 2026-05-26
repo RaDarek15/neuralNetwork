@@ -4,6 +4,7 @@
 #include <fstream>
 #include <random>
 #include <algorithm>
+#include <omp.h>
 #include "json.hpp"
 #include "mnist.hpp"
 
@@ -23,271 +24,314 @@ struct layerCache
     std::vector<double> preActivation;
     std::vector<double> postActivation;
 };
+
 class Warstwa
 {
-private:
 public:
     std::vector<std::vector<double>> weights;
     std::vector<double> biases;
-    layerCache forwardPass(
-        const std::vector<double>& inputy)
+
+    layerCache forwardPass(const std::vector<double> &inputy)
     {
         layerCache cache;
+        int neuronCount = weights.size();
+        cache.preActivation.resize(neuronCount);
+        cache.postActivation.resize(neuronCount);
 
-        for (int i = 0; i < weights.size(); i++)
+        for (int i = 0; i < neuronCount; i++)
         {
-            double wynik = 0;
-
-            for (int j = 0; j < inputy.size(); j++)
+            double wynik = biases[i];
+            for (int j = 0; j < (int)inputy.size(); j++)
             {
                 wynik += inputy[j] * weights[i][j];
             }
-
-            wynik += biases[i];
-            cache.preActivation.push_back(wynik);
-            cache.postActivation.push_back(sigmoid(wynik));
+            cache.preActivation[i] = wynik;
+            cache.postActivation[i] = sigmoid(wynik);
         }
-
         return cache;
     }
 
     Warstwa(int neuronCount, int inputCount);
-    Warstwa(const std::vector<std::vector<double>>& weights, const std::vector<double>& biases);
+    Warstwa(const std::vector<std::vector<double>> &weights, const std::vector<double> &biases);
 };
+
 Warstwa::Warstwa(int neuronCount, int inputCount)
 {
-    weights.resize(neuronCount);
-    for (auto &i : weights)
-        i.resize(inputCount);
+    weights.resize(neuronCount, std::vector<double>(inputCount));
     biases.resize(neuronCount);
     std::mt19937 mt(time(nullptr));
     std::uniform_real_distribution<double> dist(-1.0, 1.0);
     for (int i = 0; i < neuronCount; i++)
-    {
         for (int j = 0; j < inputCount; j++)
-        {
             weights[i][j] = dist(mt);
-        }
-    }
     for (int i = 0; i < neuronCount; i++)
-    {
         biases[i] = dist(mt);
-    }
 }
-Warstwa::Warstwa(const std::vector<std::vector<double>>& weights, const std::vector<double>& biases) : biases(biases), weights(weights) {};
-std::vector<double> error(const std::vector<double>& preActivation, const std::vector<double>& outputs, const std::vector<double>& expectedValues)
-{
-    std::vector<double> error;
-    for (int i = 0; i < preActivation.size(); i++)
-    {
-        error.push_back(2 * (outputs[i] - expectedValues[i]) * deriSigmoid(preActivation[i]));
-    }
-    return error;
-}
-std::vector<double> propagateError(const std::vector<double>& error, const Warstwa &layer, const std::vector<double>& preActivation)
-{
-    std::vector<double> out(layer.weights[0].size());
 
-    for (int k = 0; k < layer.weights[0].size(); k++)
+Warstwa::Warstwa(const std::vector<std::vector<double>> &weights, const std::vector<double> &biases)
+    : biases(biases), weights(weights) {}
+
+std::vector<double> computeError(const std::vector<double> &preActivation, const std::vector<double> &outputs, const std::vector<double> &expectedValues)
+{
+    std::vector<double> err(preActivation.size());
+    for (int i = 0; i < (int)preActivation.size(); i++)
+        err[i] = 2 * (outputs[i] - expectedValues[i]) * deriSigmoid(preActivation[i]);
+    return err;
+}
+
+std::vector<double> propagateError(const std::vector<double> &err, const Warstwa &layer, const std::vector<double> &preActivation)
+{
+    int inputSize = layer.weights[0].size();
+    std::vector<double> out(inputSize, 0.0);
+    for (int k = 0; k < inputSize; k++)
     {
-        for (int j = 0; j < layer.weights.size(); j++)
-        {
-            out[k] += error[j] * layer.weights[j][k];
-        }
+        for (int j = 0; j < (int)layer.weights.size(); j++)
+            out[k] += err[j] * layer.weights[j][k];
         out[k] *= deriSigmoid(preActivation[k]);
     }
     return out;
 }
+
 class siec
 {
-private:
 public:
     std::vector<Warstwa> layers;
 
-    std::vector<layerCache> forwardPass(const std::vector<double>& inputs)
+    std::vector<layerCache> forwardPass(const std::vector<double> &inputs)
     {
         std::vector<layerCache> caches;
+        caches.reserve(layers.size());
         std::vector<double> current = inputs;
-
-        for (int i = 0; i < layers.size(); i++)
+        for (int i = 0; i < (int)layers.size(); i++)
         {
             layerCache cache = layers[i].forwardPass(current);
-            caches.push_back(cache);
             current = cache.postActivation;
+            caches.push_back(std::move(cache));
         }
         return caches;
     }
-    double srStrata(const std::vector<std::vector<double>>& wynikSieci, const std::vector<std::vector<double>>& expectedValues)
-    {
-        double srStrata = 0.0;
-        int i = 0;
-        for (; i < expectedValues.size(); i++)
-        {
-            for (int j = 0; j < expectedValues[i].size(); j++)
-            {
-                srStrata += pow((expectedValues[i][j] - wynikSieci[i][j]), 2);
-            }
-        }
-        return srStrata / expectedValues.size();
-    }
-
-    std::vector<std::vector<std::vector<double>>> weightBackprop(std::vector<double> error, const std::vector<layerCache>& cache, const std::vector<double>& inputs)
+    std::vector<std::vector<std::vector<double>>> weightBackprop(
+        std::vector<double> err,
+        const std::vector<layerCache> &cache,
+        const std::vector<double> &inputs)
     {
         std::vector<std::vector<std::vector<double>>> output(layers.size());
-        for (int i = 0; i < layers.size(); i++)
+        for (int i = 0; i < (int)layers.size(); i++)
         {
             output[i].resize(layers[i].weights.size());
-            for (int j = 0; j < layers[i].weights.size(); j++)
-            {
+            for (int j = 0; j < (int)layers[i].weights.size(); j++)
                 output[i][j].resize(layers[i].weights[j].size());
-            }
         }
         for (int i = layers.size() - 1; i >= 0; i--)
         {
-            for (int j = 0; j < layers[i].weights.size(); j++)
-            {
-                for (int k = 0; k < layers[i].weights[j].size(); k++)
-                {
-                    if (i > 0)
-                    {
-                        output[i][j][k] = error[j] * cache[i - 1].postActivation[k];
-                    }
-
-                    else
-                    {
-                        output[i][j][k] = error[j] * inputs[k];
-                    }
-                }
-            }
+            const std::vector<double> &prevActivation = (i > 0) ? cache[i - 1].postActivation : inputs;
+            for (int j = 0; j < (int)layers[i].weights.size(); j++)
+                for (int k = 0; k < (int)layers[i].weights[j].size(); k++)
+                    output[i][j][k] = err[j] * prevActivation[k];
             if (i > 0)
-            {
-                error = propagateError(error, layers[i], cache[i - 1].preActivation);
-            }
+                err = propagateError(err, layers[i], cache[i - 1].preActivation);
         }
         return output;
     }
-    std::vector<std::vector<double>> biasBackprop(std::vector<double> error, const std::vector<layerCache>& cache, const std::vector<double>& inputs)
+
+    std::vector<std::vector<double>> biasBackprop(
+        std::vector<double> err,
+        const std::vector<layerCache> &cache,
+        const std::vector<double> &inputs)
     {
         std::vector<std::vector<double>> output(layers.size());
-        for (int i = 0; i < layers.size(); i++)
-        {
+        for (int i = 0; i < (int)layers.size(); i++)
             output[i].resize(layers[i].biases.size());
-        }
         for (int i = layers.size() - 1; i >= 0; i--)
         {
-            for (int j = 0; j < layers[i].weights.size(); j++)
-            {
-                output[i][j] = error[j];
-            }
+            for (int j = 0; j < (int)layers[i].weights.size(); j++)
+                output[i][j] = err[j];
             if (i > 0)
-            {
-                error = propagateError(error, layers[i], cache[i - 1].preActivation);
-            }
+                err = propagateError(err, layers[i], cache[i - 1].preActivation);
         }
         return output;
     }
-    void update(const std::vector<std::vector<std::vector<double>>>& weightNumGrad, const std::vector<std::vector<double>>& biasNumGrad, double learningRate)
-    {
-        for (int i = 0; i < layers.size(); i++)
-        {
-            for (int j = 0; j < layers[i].weights.size(); j++)
-            {
-                for (int k = 0; k < layers[i].weights[j].size(); k++)
-                {
-                    layers[i].weights[j][k] = layers[i].weights[j][k] - learningRate * weightNumGrad[i][j][k];
-                }
-                layers[i].biases[j] = layers[i].biases[j] - learningRate * biasNumGrad[i][j];
-            }
-        }
-    }
-    void train(const std::vector<std::vector<double>>& trainingData, const std::vector<std::vector<double>>& expectedValues, double learningRate, int iterations)
-    {
-        std::vector<layerCache> cache;
-        for (int i = 0; i < iterations; i++)
-        {
 
-            for (int j = 0; j < trainingData.size(); j++)
+    void update(const std::vector<std::vector<std::vector<double>>> &weightGrad,
+                const std::vector<std::vector<double>> &biasGrad,
+                double learningRate)
+    {
+        for (int i = 0; i < (int)layers.size(); i++)
+            for (int j = 0; j < (int)layers[i].weights.size(); j++)
             {
-                cache = forwardPass(trainingData[j]);
-                std::vector<double> err = error(cache.back().preActivation, cache.back().postActivation, expectedValues[j]);
-                update(weightBackprop(err, cache, trainingData[j]), biasBackprop(err, cache, trainingData[j]), learningRate);
+                for (int k = 0; k < (int)layers[i].weights[j].size(); k++)
+                    layers[i].weights[j][k] -= learningRate * weightGrad[i][j][k];
+                layers[i].biases[j] -= learningRate * biasGrad[i][j];
             }
-            
+    }
+
+    void train(const std::vector<std::vector<double>> &trainingData,
+               const std::vector<std::vector<double>> &expectedValues,
+               double learningRate,
+               int iterations,
+               int batchSize = 32)
+    {
+        int n = trainingData.size();
+
+        std::vector<int> indices(n);
+        std::iota(indices.begin(), indices.end(), 0);
+        std::mt19937 rng(42);
+
+        for (int epoch = 0; epoch < iterations; epoch++)
+        {
+            std::shuffle(indices.begin(), indices.end(), rng);
+
+            for (int batchStart = 0; batchStart < n; batchStart += batchSize)
+            {
+                int batchEnd = std::min(batchStart + batchSize, n);
+                int actualBatchSize = batchEnd - batchStart;
+                std::vector<std::vector<std::vector<double>>> accumWeightGrad(layers.size());
+                std::vector<std::vector<double>> accumBiasGrad(layers.size());
+                for (int i = 0; i < (int)layers.size(); i++)
+                {
+                    accumWeightGrad[i].resize(layers[i].weights.size());
+                    for (int j = 0; j < (int)layers[i].weights.size(); j++)
+                        accumWeightGrad[i][j].assign(layers[i].weights[j].size(), 0.0);
+                    accumBiasGrad[i].assign(layers[i].biases.size(), 0.0);
+                }
+#pragma omp parallel
+                {
+                    std::vector<std::vector<std::vector<double>>> localWeightGrad(layers.size());
+                    std::vector<std::vector<double>> localBiasGrad(layers.size());
+                    for (int i = 0; i < (int)layers.size(); i++)
+                    {
+                        localWeightGrad[i].resize(layers[i].weights.size());
+                        for (int j = 0; j < (int)layers[i].weights.size(); j++)
+                            localWeightGrad[i][j].assign(layers[i].weights[j].size(), 0.0);
+                        localBiasGrad[i].assign(layers[i].biases.size(), 0.0);
+                    }
+
+#pragma omp for nowait
+                    for (int b = batchStart; b < batchEnd; b++)
+                    {
+                        int idx = indices[b];
+                        auto cache = forwardPass(trainingData[idx]);
+                        auto err = computeError(cache.back().preActivation,
+                                                cache.back().postActivation,
+                                                expectedValues[idx]);
+
+                        auto wGrad = weightBackprop(err, cache, trainingData[idx]);
+                        auto bGrad = biasBackprop(err, cache, trainingData[idx]);
+
+                        for (int i = 0; i < (int)layers.size(); i++)
+                        {
+                            for (int j = 0; j < (int)layers[i].weights.size(); j++)
+                            {
+                                for (int k = 0; k < (int)layers[i].weights[j].size(); k++)
+                                    localWeightGrad[i][j][k] += wGrad[i][j][k];
+                                localBiasGrad[i][j] += bGrad[i][j];
+                            }
+                        }
+                    }
+#pragma omp critical
+                    {
+                        for (int i = 0; i < (int)layers.size(); i++)
+                            for (int j = 0; j < (int)layers[i].weights.size(); j++)
+                            {
+                                for (int k = 0; k < (int)layers[i].weights[j].size(); k++)
+                                    accumWeightGrad[i][j][k] += localWeightGrad[i][j][k];
+                                accumBiasGrad[i][j] += localBiasGrad[i][j];
+                            }
+                    }
+                }
+
+                double scale = learningRate / actualBatchSize;
+                for (int i = 0; i < (int)layers.size(); i++)
+                    for (int j = 0; j < (int)layers[i].weights.size(); j++)
+                    {
+                        for (int k = 0; k < (int)layers[i].weights[j].size(); k++)
+                            accumWeightGrad[i][j][k] *= scale;
+                        accumBiasGrad[i][j] *= scale;
+                    }
+                update(accumWeightGrad, accumBiasGrad, 1.0);
+            }
+
+            std::cout << "Epoch " << epoch + 1 << "/" << iterations << " done\n";
             save("model.json", expectedValues);
         }
     }
 
-    void save(const std::string& fileName, const std::vector<std::vector<double>>& expectedValues)
+    double srStrata(const std::vector<std::vector<double>> &wynikSieci, const std::vector<std::vector<double>> &expectedValues)
     {
+        double total = 0.0;
+        for (int i = 0; i < (int)expectedValues.size(); i++)
+            for (int j = 0; j < (int)expectedValues[i].size(); j++)
+                total += pow(expectedValues[i][j] - wynikSieci[i][j], 2);
+        return total / expectedValues.size();
+    }
 
+    void save(const std::string &fileName, const std::vector<std::vector<double>> &)
+    {
         json j;
         j["layers"] = json::array();
         for (auto &layer : layers)
-        {
             j["layers"].push_back({{"weights", layer.weights}, {"biases", layer.biases}});
-        }
         std::ofstream file(fileName);
         file << j.dump(4);
-        file.close();
     }
-    void load(const std::string& fileName)
+
+    void load(const std::string &fileName)
     {
-        json j = json::array();
+        json j;
         std::ifstream file(fileName);
         file >> j;
-        for (int i = 0; i < layers.size(); i++)
+        for (int i = 0; i < (int)layers.size(); i++)
         {
             layers[i].weights = j["layers"][i]["weights"].get<std::vector<std::vector<double>>>();
             layers[i].biases = j["layers"][i]["biases"].get<std::vector<double>>();
         }
-
-        file.close();
     }
-    double accuracy(const std::vector<std::vector<double>>& wynikSieci, const std::vector<std::vector<double>>& expectedValues)
+
+    double accuracy(const std::vector<std::vector<double>> &wynikSieci, const std::vector<std::vector<double>> &expectedValues)
     {
         int counter = 0;
-        int i;
-        for (i = 0; i < expectedValues.size(); i++)
+        for (int i = 0; i < (int)expectedValues.size(); i++)
         {
             int predicted = std::max_element(wynikSieci[i].begin(), wynikSieci[i].end()) - wynikSieci[i].begin();
-            int expceted = std::max_element(expectedValues[i].begin(), expectedValues[i].end()) - expectedValues[i].begin();
-            if (expceted == predicted) 
-            {
+            int expected = std::max_element(expectedValues[i].begin(), expectedValues[i].end()) - expectedValues[i].begin();
+            if (expected == predicted)
                 counter++;
-            }
-            
         }
-        return (double)counter/i*100;
-        
+        return (double)counter / expectedValues.size() * 100.0;
     }
-    siec(const std::vector<Warstwa>& layers);
+
+    siec(const std::vector<Warstwa> &layers) : layers(layers) {}
 };
-siec::siec(const std::vector<Warstwa>& layers) : layers(layers) {}
 
 int main()
 {
+    std::cout << "Using " << omp_get_max_threads() << " threads\n";
+
     char yesNo;
     std::vector<std::vector<double>> wyniki;
     std::ifstream f("model.json");
-    data data = readMnist("train-images.idx3-ubyte", "train-labels.idx1-ubyte");
-    std::vector<std::vector<double>> trainingData = data.images, expectedValues = data.labels;
+
+    data trainData = readMnist("train-images.idx3-ubyte", "train-labels.idx1-ubyte");
+
     siec mnist({Warstwa(128, 784), Warstwa(64, 128), Warstwa(10, 64)});
+
     if (f)
     {
         mnist.load("model.json");
-        std::cout << "Model loaded! \n";
+        std::cout << "Model loaded!\n";
     }
 
-    std::cout << "do you want to train more? (y/n)\n";
+    std::cout << "Do you want to train more? (y/n)\n";
     std::cin >> yesNo;
     if (yesNo == 'y')
     {
-        mnist.train(trainingData, expectedValues, 0.01, 3);
+        mnist.train(trainData.images, trainData.labels, 0.01, 3, 32);
     }
-    data = readMnist("t10k-images.idx3-ubyte", "t10k-labels.idx1-ubyte");
-    for (int i = 0; i < data.images.size() ; i++)
-    {
-        wyniki.push_back(mnist.forwardPass(data.images[i]).back().postActivation);
-    }
-    std::cout << "Accuracy: " << mnist.accuracy(wyniki, data.labels) << "%\n";
+
+    data testData = readMnist("t10k-images.idx3-ubyte", "t10k-labels.idx1-ubyte");
+    wyniki.reserve(testData.images.size());
+    for (int i = 0; i < (int)testData.images.size(); i++)
+        wyniki.push_back(mnist.forwardPass(testData.images[i]).back().postActivation);
+
+    std::cout << "Accuracy: " << mnist.accuracy(wyniki, testData.labels) << "%\n";
 }
