@@ -379,7 +379,10 @@ public:
         }
         return out;
     }
-    void printMnistAscii(const std::vector<double> &imageVec)
+
+    siec(const std::vector<Warstwa> &layers) : layers(layers) {}
+};
+void printMnistAscii(const std::vector<double> &imageVec)
     {
         if (imageVec.size() != 784)
         {
@@ -405,6 +408,3 @@ public:
             std::cout << "\n";
         }
     }
-
-    siec(const std::vector<Warstwa> &layers) : layers(layers) {}
-};

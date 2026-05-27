@@ -46,7 +46,7 @@ int main()
         std::cin >> filePath;
         std::vector<double> inputVector = mnist.loadPng(filePath);
         std::cout << "\n--- Processed Input (28x28) ---\n";
-        mnist.printMnistAscii(inputVector);
+        printMnistAscii(inputVector);
         std::cout << "-------------------------------------\n\n";
 
         auto results = mnist.forwardPass(inputVector);
