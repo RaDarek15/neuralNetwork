@@ -295,7 +295,7 @@ public:
             }
 
             std::cout << "Epoch " << epoch + 1 << "/" << iterations << " done\n";
-            save("model.json", expectedValues);
+            save("model.json");
         }
     }
 
@@ -309,7 +309,7 @@ public:
         return total / expectedValues.size();
     }
 
-    void save(const std::string &fileName, const std::vector<std::vector<double>> &)
+    void save(const std::string &fileName)
     {
         json j;
         j["layers"] = json::array();
