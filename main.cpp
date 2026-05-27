@@ -44,7 +44,12 @@ int main()
         std::string filePath;
         std::cout << "Put in the filepath\n";
         std::cin >> filePath;
-        auto results = mnist.forwardPass(mnist.loadPng(filePath));
+        std::vector<double> inputVector = mnist.loadPng(filePath);
+        std::cout << "\n--- Processed Input (28x28) ---\n";
+        mnist.printMnistAscii(inputVector);
+        std::cout << "-------------------------------------\n\n";
+
+        auto results = mnist.forwardPass(inputVector);
 
         auto finalOutputs = results.back().postActivation;
         auto probabilities = softmax(finalOutputs);
