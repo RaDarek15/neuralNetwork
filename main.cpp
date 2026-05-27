@@ -8,38 +8,38 @@
 #include <omp.h>
 #include "mnist.hpp"
 #include "network.hpp"
-void printMnistAscii(const std::vector<double> &imageVec)
+void printMnistAscii(const std::vector<double> &image)
 {
-    if (imageVec.size() != 784)
+    if (image.size() != 784)
     {
-        std::cerr << "Error: Vector size is " << imageVec.size() << ", expected 784.\n";
+        std::cerr << "Error: Vector size is " << image.size() << ", expected 784.\n";
         return;
     }
-    const std::string ASCII_CHARS = " .:-=+*#%@";
+    const std::string ascii = " .:-=+*#%@";
 
     for (int y = 0; y < 28; ++y)
     {
         for (int x = 0; x < 28; ++x)
         {
-            double val = imageVec[y * 28 + x];
+            double val = image[y * 28 + x];
             if (val < 0.0)
                 val = 0.0;
             if (val > 1.0)
                 val = 1.0;
 
-            int charIndex = (int)(val * (ASCII_CHARS.length() - 1));
+            int charIndex = (int)(val * (ascii.length() - 1));
 
-            std::cout << ASCII_CHARS[charIndex] << ASCII_CHARS[charIndex];
+            std::cout << ascii[charIndex] << ascii[charIndex];
         }
         std::cout << "\n";
     }
 }
 void printHeader()
 {
-    std::cout << "\n╔══════════════════════════════╗\n";
-    std::cout << "║       MNIST Classifier       ║\n";
-    std::cout << "║  Threads: " << std::setw(2) << omp_get_max_threads() << "                 ║\n";
-    std::cout << "╚══════════════════════════════╝\n\n";
+    std::cout << "\n|==============================|\n";
+    std::cout << "|       MNIST Classifier       |\n";
+    std::cout << "|  Threads: " << std::setw(2) << omp_get_max_threads() << "                 |\n";
+    std::cout << "|==============================|\n\n";
 }
 
 void printMenu()
@@ -49,7 +49,6 @@ void printMenu()
     std::cout << "  [3] Predict from image\n";
     std::cout << "  [4] Save model\n";
     std::cout << "  [0] Exit\n";
-    std::cout << "\n> ";
 }
 
 char prompt(const std::string &msg)
@@ -60,28 +59,28 @@ char prompt(const std::string &msg)
     return std::tolower(c);
 }
 
-void doTrain(siec &model)
+void train(siec &model)
 {
     std::cout << "\n[Train]\n";
     double lr;
     int epochs, batchSize;
-    std::cout << "  Learning rate [0.01]: ";
+    std::cout << "  Learning rate recomended(0.01): ";
     std::cin >> lr;
-    std::cout << "  Epochs        [3]:    ";
+    std::cout << "  Epochs         (30s-1m30s per epoch):    ";
     std::cin >> epochs;
-    std::cout << "  Batch size    [32]:   ";
+    std::cout << "  Batch size    recomended(32):   ";
     std::cin >> batchSize;
 
-    std::cout << "\n  Loading training data...\n";
+    std::cout << "\nLoading data...\n";
     data trainData = readMnist("train-images.idx3-ubyte", "train-labels.idx1-ubyte");
-    std::cout << "  Starting training...\n\n";
+    std::cout << "Starting training...\n\n";
     model.train(trainData.images, trainData.labels, lr, epochs, batchSize);
-    std::cout << "\n  Done.\n";
+    std::cout << "\nDone.\n";
 }
 
-void doEvaluate(siec &model)
+void evaluate(siec &model)
 {
-    std::cout << "\n[Evaluate]\n  Loading test data...\n";
+    std::cout << "\n[Evaluate]\nLoading test data...\n";
     data testData = readMnist("t10k-images.idx3-ubyte", "t10k-labels.idx1-ubyte");
 
     std::vector<std::vector<double>> wyniki;
@@ -92,16 +91,16 @@ void doEvaluate(siec &model)
     std::cout << "  Accuracy: " << model.accuracy(wyniki, testData.labels) << "%\n";
 }
 
-void doPredict(siec &model)
+void userImg(siec &model)
 {
     std::cout << "\n[Predict]\n  File path: ";
     std::string filePath;
     std::cin >> filePath;
 
-    std::vector<double> input = model.loadPng(filePath);
-    std::cout << "\n--- Input (28x28) ---\n";
+    std::vector<double> input = model.extendTo28px(model.loadPng(filePath));
+    std::cout << "\n----------------------------\n";
     printMnistAscii(input);
-    std::cout << "---------------------\n\n";
+    std::cout << "----------------------------\n\n";
 
     auto outputs = model.forwardPass(input).back().postActivation;
     auto probs = softmax(outputs);
@@ -156,20 +155,20 @@ int main()
         switch (choice)
         {
         case 1:
-            doTrain(model);
+            train(model);
             break;
         case 2:
-            doEvaluate(model);
+            evaluate(model);
             break;
         case 3:
-            doPredict(model);
+            userImg(model);
             break;
         case 4:
             model.save("model.json");
             std::cout << "Saved to model.json\n";
             break;
         case 0:
-            if (prompt("  Save before exit?") == 'y')
+            if (prompt("Save before exit?") == 'y')
             {
                 model.save("model.json");
                 std::cout << "Saved.\n";

@@ -344,37 +344,69 @@ public:
         }
         return (double)counter / expectedValues.size() * 100.0;
     }
+#include <vector>
+#include <string>
+#include <cmath>
+#include <algorithm>
+
     std::vector<double> loadPng(const std::string &filename)
     {
-
         int width, height, channels;
-        std::vector<double> out(784);
+        std::vector<double> out(400);
         double src_x;
         double src_y;
+
         unsigned char *data = stbi_load(filename.c_str(), &width, &height, &channels, 1);
+        if (!data)
+        {
+            return out;
+        }
+
         std::vector<double> image(width * height);
         for (int i = 0; i < width * height; i++)
         {
-            image[i] = 1.0 - data[i] / 255.0;
+            image[i] = 1.0 - (data[i] / 255.0);
         }
-
         stbi_image_free(data);
-        for (int y = 0; y < 28; y++)
-        {
-            for (int x = 0; x < 28; x++)
-            {
-                src_x = x * (width / 28.0);
-                src_y = y * (height / 28.0);
 
-                int x0 = std::floor(src_x);
-                int x1 = std::ceil(src_x);
-                int y0 = std::floor(src_y);
-                int y1 = std::ceil(src_y);
-                x1 = std::min(x1, width - 1);
-                y1 = std::min(y1, height - 1);
-                double fx = src_x - x0;
-                double fy = src_y - y0;
-                out[y * 28 + x] = image[y0 * width + x0] * (1 - fx) * (1 - fy) + image[y1 * width + x0] * (fx * (1 - fy)) + image[y0 * width + x1] * ((1 - fx) * fy) + image[y1 * width + x1] * (fy * fx);
+        for (int y = 0; y < 20; y++)
+        {
+            for (int x = 0; x < 20; x++)
+            {
+                src_x = x * (width / 20.0);
+                src_y = y * (height / 20.0);
+
+                int x0 = std::clamp(static_cast<int>(std::floor(src_x)), 0, width - 1);
+                int x1 = std::clamp(static_cast<int>(std::ceil(src_x)), 0, width - 1);
+                int y0 = std::clamp(static_cast<int>(std::floor(src_y)), 0, height - 1);
+                int y1 = std::clamp(static_cast<int>(std::ceil(src_y)), 0, height - 1);
+
+                double fx = src_x - std::floor(src_x);
+                double fy = src_y - std::floor(src_y);
+
+                double p00 = image[y0 * width + x0] * (1.0 - fx) * (1.0 - fy);
+                double p10 = image[y0 * width + x1] * fx * (1.0 - fy);
+                double p01 = image[y1 * width + x0] * (1.0 - fx) * fy;
+                double p11 = image[y1 * width + x1] * fx * fy;
+
+                out[y * 20 + x] = p00 + p10 + p01 + p11;
+            }
+        }
+        return out;
+    }
+
+    std::vector<double> extendTo28px(const std::vector<double> &image)
+    {
+        std::vector<double> out(784, 0.0);
+
+        for (int i = 0; i < 28; i++)
+        {
+            for (int j = 0; j < 28; j++)
+            {
+                if (i >= 4 && i < 24 && j >= 4 && j < 24)
+                {
+                    out[i * 28 + j] = image[(i - 4) * 20 + (j - 4)];
+                }
             }
         }
         return out;
