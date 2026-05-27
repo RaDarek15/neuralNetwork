@@ -5,6 +5,7 @@
 #include <random>
 #include <algorithm>
 #include <omp.h>
+#include <functional>
 #include "json.hpp"
 #include "mnist.hpp"
 
@@ -16,9 +17,40 @@ double sigmoid(double z)
 }
 double deriSigmoid(double z)
 {
-    return sigmoid(z) * (1 - sigmoid(z));
+    double s = sigmoid(z);
+    return s * (1 - s);
 }
-
+double leakReLU(double z){
+    if (z > 0){return z;} 
+    return 0.01;
+}
+double deriLeakReLU(double z){
+    if (z > 0){return 1;} 
+    return 0.01;
+}
+std::vector<double> softmax(const std::vector<double> &z)
+{
+    std::vector<double> out(z.size());
+    double max = *std::max_element(z.begin(), z.end());
+    double sum = 0;
+    for (int i = 0; i < z.size(); i++)
+    {
+        out[i] = exp(z[i] - max);
+        sum += out[i];
+    }
+    for (int i = 0; i < z.size(); i++)
+        out[i] /= sum;
+    return out;
+}
+double crossEntropy(const std::vector<double> &z, const std::vector<double> &expected)
+{
+    double L = 0;
+    for (int i = 0; i < z.size(); i++)
+    {
+        L -= expected[i] * log(z[i] + 1e-9);
+    }
+    return L;
+}
 struct layerCache
 {
     std::vector<double> preActivation;
@@ -30,7 +62,8 @@ class Warstwa
 public:
     std::vector<std::vector<double>> weights;
     std::vector<double> biases;
-
+    std::function<double(double)> activation;
+    std::function<double(double)> activationDerivative;
     layerCache forwardPass(const std::vector<double> &inputy)
     {
         layerCache cache;
@@ -46,30 +79,26 @@ public:
                 wynik += inputy[j] * weights[i][j];
             }
             cache.preActivation[i] = wynik;
-            cache.postActivation[i] = sigmoid(wynik);
+            cache.postActivation[i] = activation(wynik);
         }
         return cache;
     }
 
-    Warstwa(int neuronCount, int inputCount);
-    Warstwa(const std::vector<std::vector<double>> &weights, const std::vector<double> &biases);
+    Warstwa(int neuronCount, int inputCount, std::function<double(double)> activation, std::function<double(double)> activationDerivative);
 };
 
-Warstwa::Warstwa(int neuronCount, int inputCount)
+Warstwa::Warstwa(int neuronCount, int inputCount, std::function<double(double)> activation, std::function<double(double)> activationDerivative) : activation(activation), activationDerivative(activationDerivative)
 {
     weights.resize(neuronCount, std::vector<double>(inputCount));
     biases.resize(neuronCount);
     std::mt19937 mt(time(nullptr));
-    std::uniform_real_distribution<double> dist(-1.0, 1.0);
+    std::normal_distribution<double> dist(0,sqrt(2.0 / inputCount));
     for (int i = 0; i < neuronCount; i++)
         for (int j = 0; j < inputCount; j++)
             weights[i][j] = dist(mt);
     for (int i = 0; i < neuronCount; i++)
         biases[i] = dist(mt);
 }
-
-Warstwa::Warstwa(const std::vector<std::vector<double>> &weights, const std::vector<double> &biases)
-    : biases(biases), weights(weights) {}
 
 std::vector<double> computeError(const std::vector<double> &preActivation, const std::vector<double> &outputs, const std::vector<double> &expectedValues)
 {
@@ -79,7 +108,10 @@ std::vector<double> computeError(const std::vector<double> &preActivation, const
     return err;
 }
 
-std::vector<double> propagateError(const std::vector<double> &err, const Warstwa &layer, const std::vector<double> &preActivation)
+std::vector<double> propagateError(const std::vector<double> &err,
+                                   const Warstwa &layer,
+                                   const std::vector<double> &preActivation,
+                                   std::function<double(double)> prevActivationDerivative)
 {
     int inputSize = layer.weights[0].size();
     std::vector<double> out(inputSize, 0.0);
@@ -87,7 +119,7 @@ std::vector<double> propagateError(const std::vector<double> &err, const Warstwa
     {
         for (int j = 0; j < (int)layer.weights.size(); j++)
             out[k] += err[j] * layer.weights[j][k];
-        out[k] *= deriSigmoid(preActivation[k]);
+        out[k] *= prevActivationDerivative(preActivation[k]);
     }
     return out;
 }
@@ -129,7 +161,7 @@ public:
                 for (int k = 0; k < (int)layers[i].weights[j].size(); k++)
                     output[i][j][k] = err[j] * prevActivation[k];
             if (i > 0)
-                err = propagateError(err, layers[i], cache[i - 1].preActivation);
+                err = propagateError(err, layers[i], cache[i - 1].preActivation, layers[i - 1].activationDerivative);
         }
         return output;
     }
@@ -147,7 +179,7 @@ public:
             for (int j = 0; j < (int)layers[i].weights.size(); j++)
                 output[i][j] = err[j];
             if (i > 0)
-                err = propagateError(err, layers[i], cache[i - 1].preActivation);
+                err = propagateError(err, layers[i], cache[i - 1].preActivation, layers[i - 1].activationDerivative);
         }
         return output;
     }
@@ -175,7 +207,7 @@ public:
 
         std::vector<int> indices(n);
         std::iota(indices.begin(), indices.end(), 0);
-        std::mt19937 rng(42);
+        std::mt19937 rng(10);
 
         for (int epoch = 0; epoch < iterations; epoch++)
         {
@@ -211,9 +243,12 @@ public:
                     {
                         int idx = indices[b];
                         auto cache = forwardPass(trainingData[idx]);
-                        auto err = computeError(cache.back().preActivation,
-                                                cache.back().postActivation,
-                                                expectedValues[idx]);
+                        std::vector<double> err(expectedValues[idx].size());
+                        auto s = softmax(cache.back().postActivation);
+                        for (int i = 0; i < err.size(); i++)
+                        {
+                            err[i] = s[i] - expectedValues[idx][i];
+                        }
 
                         auto wGrad = weightBackprop(err, cache, trainingData[idx]);
                         auto bGrad = biasBackprop(err, cache, trainingData[idx]);
@@ -256,7 +291,8 @@ public:
         }
     }
 
-    double srStrata(const std::vector<std::vector<double>> &wynikSieci, const std::vector<std::vector<double>> &expectedValues)
+    double srStrata(const std::vector<std::vector<double>> &wynikSieci,
+                    const std::vector<std::vector<double>> &expectedValues)
     {
         double total = 0.0;
         for (int i = 0; i < (int)expectedValues.size(); i++)
@@ -287,7 +323,8 @@ public:
         }
     }
 
-    double accuracy(const std::vector<std::vector<double>> &wynikSieci, const std::vector<std::vector<double>> &expectedValues)
+    double accuracy(const std::vector<std::vector<double>> &wynikSieci,
+                    const std::vector<std::vector<double>> &expectedValues)
     {
         int counter = 0;
         for (int i = 0; i < (int)expectedValues.size(); i++)
@@ -313,7 +350,7 @@ int main()
 
     data trainData = readMnist("train-images.idx3-ubyte", "train-labels.idx1-ubyte");
 
-    siec mnist({Warstwa(128, 784), Warstwa(64, 128), Warstwa(10, 64)});
+    siec mnist({Warstwa(128, 784, leakReLU, deriLeakReLU), Warstwa(64, 128, leakReLU, deriLeakReLU), Warstwa(10, 64,[](double x) { return x; },[](double x) { return 1; } )});
 
     if (f)
     {
