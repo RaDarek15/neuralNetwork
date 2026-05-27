@@ -8,7 +8,9 @@
 #include <omp.h>
 #include <functional>
 #include "json.hpp"
+
 using json = nlohmann::json;
+
 
 double sigmoid(double z)
 {
@@ -19,12 +21,20 @@ double deriSigmoid(double z)
     double s = sigmoid(z);
     return s * (1 - s);
 }
-double leakReLU(double z){
-    if (z > 0){return z;} 
-    return 0.01;
+double leakReLU(double z)
+{
+    if (z > 0)
+    {
+        return z;
+    }
+    return 0.01 * z;
 }
-double deriLeakReLU(double z){
-    if (z > 0){return 1;} 
+double deriLeakReLU(double z)
+{
+    if (z > 0)
+    {
+        return 1;
+    }
     return 0.01;
 }
 std::vector<double> softmax(const std::vector<double> &z)
@@ -91,7 +101,7 @@ Warstwa::Warstwa(int neuronCount, int inputCount, std::function<double(double)> 
     weights.resize(neuronCount, std::vector<double>(inputCount));
     biases.resize(neuronCount);
     std::mt19937 mt(time(nullptr));
-    std::normal_distribution<double> dist(0,sqrt(2.0 / inputCount));
+    std::normal_distribution<double> dist(0, sqrt(2.0 / inputCount));
     for (int i = 0; i < neuronCount; i++)
         for (int j = 0; j < inputCount; j++)
             weights[i][j] = dist(mt);
@@ -334,6 +344,41 @@ public:
                 counter++;
         }
         return (double)counter / expectedValues.size() * 100.0;
+    }
+    std::vector<double> loadPng(const std::string &filename)
+    {
+
+        int width, height, channels;
+        std::vector<double> out(784);
+        double src_x;
+        double src_y;
+        unsigned char *data = stbi_load(filename.c_str(), &width, &height, &channels, 1);
+        std::vector<double> image(width * height);
+        for (int i = 0; i < width * height; i++)
+        {
+            image[i] = 1.0 - data[i] / 255.0;
+        }
+
+        stbi_image_free(data);
+        for (int y = 0; y < 28; y++)
+        {
+            for (int x = 0; x < 28; x++)
+            {
+                src_x = x * (width / 28.0);
+                src_y = y * (height / 28.0);
+
+                int x0 = std::floor(src_x);
+                int x1 = std::ceil(src_x);
+                int y0 = std::floor(src_y);
+                int y1 = std::ceil(src_y);
+                x1 = std::min(x1, width - 1);
+                y1 = std::min(y1, height - 1);
+                double fx = src_x - x0;
+                double fy = src_y - y0;
+                out[y * 28 + x] = image[y0 * width + x0] * (1 - fx) * (1 - fy) + image[y1 * width + x0] * (fx * (1 - fy)) + image[y0 * width + x1] * ((1 - fx) * fy) + image[y1 * width + x1] * (fy * fx);
+            }
+        }
+        return out;
     }
 
     siec(const std::vector<Warstwa> &layers) : layers(layers) {}

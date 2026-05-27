@@ -1,7 +1,7 @@
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 #include "mnist.hpp"
 #include "network.hpp"
-
-
 
 int main()
 {
@@ -13,7 +13,9 @@ int main()
 
     data trainData = readMnist("train-images.idx3-ubyte", "train-labels.idx1-ubyte");
 
-    siec mnist({Warstwa(128, 784, leakReLU, deriLeakReLU), Warstwa(64, 128, leakReLU, deriLeakReLU), Warstwa(10, 64,[](double x) { return x; },[](double x) { return 1; } )});
+    siec mnist({Warstwa(128, 784, leakReLU, deriLeakReLU), Warstwa(64, 128, leakReLU, deriLeakReLU), Warstwa(10, 64, [](double x)
+                                                                                                             { return x; }, [](double x)
+                                                                                                             { return 1; })});
 
     if (f)
     {
@@ -34,4 +36,21 @@ int main()
         wyniki.push_back(mnist.forwardPass(testData.images[i]).back().postActivation);
 
     std::cout << "Accuracy: " << mnist.accuracy(wyniki, testData.labels) << "%\n";
+
+    std::cout << "Do you want to put in your own number? (y/n)\n";
+    std::cin >> yesNo;
+    if (yesNo == 'y')
+    {
+        std::string filePath;
+        std::cout << "Put in the filepath\n";
+        std::cin >> filePath;
+        auto results = mnist.forwardPass(mnist.loadPng(filePath));
+
+        auto finalOutputs = results.back().postActivation;
+        auto probabilities = softmax(finalOutputs);
+
+        int predictedDigit = std::max_element(probabilities.begin(), probabilities.end()) - probabilities.begin();
+        std::cout << "Predicted Digit: " << predictedDigit << "\n";
+        std::cout << "Confidence: " << probabilities[predictedDigit] * 100.0 << "%\n";
+    }
 }
