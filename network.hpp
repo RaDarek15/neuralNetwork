@@ -11,7 +11,6 @@
 
 using json = nlohmann::json;
 
-
 double sigmoid(double z)
 {
     return 1.0 / (1.0 + exp(-z));
@@ -379,6 +378,32 @@ public:
             }
         }
         return out;
+    }
+    void printMnistAscii(const std::vector<double> &imageVec)
+    {
+        if (imageVec.size() != 784)
+        {
+            std::cerr << "Error: Vector size is " << imageVec.size() << ", expected 784.\n";
+            return;
+        }
+        const std::string ASCII_CHARS = " .:-=+*#%@";
+
+        for (int y = 0; y < 28; ++y)
+        {
+            for (int x = 0; x < 28; ++x)
+            {
+                double val = imageVec[y * 28 + x];
+                if (val < 0.0)
+                    val = 0.0;
+                if (val > 1.0)
+                    val = 1.0;
+
+                int charIndex = (int)(val * (ASCII_CHARS.length() - 1));
+
+                std::cout << ASCII_CHARS[charIndex] << ASCII_CHARS[charIndex];
+            }
+            std::cout << "\n";
+        }
     }
 
     siec(const std::vector<Warstwa> &layers) : layers(layers) {}
